@@ -1,7 +1,8 @@
 import json
 import logging
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+import httpx
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
 
 from app.services.assistant_service import assistant_service
@@ -82,6 +83,31 @@ async def health_check():
         },
         "ready": has_gemini or has_groq or has_ollama
     }
+
+@router.post("/api/voice/transcribe")
+async def transcribe_audio_endpoint(file: UploadFile = File(...)):
+    """
+    Transcribes voice recordings using Groq Whisper-large-v3 model (<200ms ultra-fast latency).
+    """
+    if not settings.GROQ_API_KEY:
+        raise HTTPException(status_code=400, detail="GROQ_API_KEY required for Whisper voice transcription.")
+
+    try:
+        content = await file.read()
+        headers = {"Authorization": f"Bearer {settings.GROQ_API_KEY}"}
+        files = {"file": (file.filename or "audio.wav", content, file.content_type or "audio/wav")}
+        data = {"model": "whisper-large-v3"}
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post("https://api.groq.com/openai/v1/audio/transcriptions", headers=headers, files=files, data=data)
+            if resp.status_code == 200:
+                transcription = resp.json().get("text", "")
+                return {"text": transcription, "status": "success"}
+            else:
+                raise HTTPException(status_code=resp.status_code, detail=f"Whisper transcription failed: {resp.text}")
+    except Exception as e:
+        logger.error(f"Voice transcription error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/chat", response_model=ChatMessageResponse)
 async def chat_endpoint(request: ChatMessageRequest, db: AsyncSession = Depends(get_db)):

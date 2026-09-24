@@ -44,6 +44,32 @@ class LLMService:
                 logger.warning(f"Groq SDK initialization note: {e}")
         return None
 
+    def dispatch_model(self, prompt: str) -> tuple[str, str]:
+        """
+        Smart Model Dispatcher.
+        Selects optimal LLM provider & model based on query intent & complexity.
+        Returns tuple: (provider_name, model_name)
+        """
+        prompt_lower = prompt.lower()
+
+        # Heavy coding / reasoning / complex math keywords
+        heavy_keywords = ["code", "python", "kotlin", "java", "sql", "function", "algorithm", "debug", "refactor", "math", "equation", "solve", "architecture"]
+        is_heavy = any(kw in prompt_lower for kw in heavy_keywords) or len(prompt) > 400
+
+        if is_heavy:
+            if self.groq_key:
+                return ("groq", "llama-3.3-70b-versatile")
+            elif self.gemini_key:
+                return ("gemini", self.gemini_model)
+
+        # Default fast chat dispatch (Ultra-fast Llama 8B)
+        if self.groq_key:
+            return ("groq", "llama-3.1-8b-instant")
+        elif self.gemini_key:
+            return ("gemini", self.gemini_model)
+
+        return ("ollama", self.ollama_model)
+
     async def generate_response(
         self,
         prompt: str,
@@ -54,6 +80,10 @@ class LLMService:
         Generates complete text response with provider routing and fallback.
         """
         chosen_provider = provider.lower()
+        target_model = self.groq_model
+
+        if chosen_provider == "auto":
+            chosen_provider, target_model = self.dispatch_model(prompt)
 
         if chosen_provider == "ollama":
             try:
@@ -63,14 +93,11 @@ class LLMService:
                 logger.error(f"Ollama generation failed: {e}")
                 raise e
 
-        if chosen_provider == "auto":
-            chosen_provider = "groq" if self.groq_key else ("gemini" if self.gemini_key else "ollama")
-
         # Route to requested or default
         if chosen_provider == "groq" and self.groq_key:
             try:
-                res = await self._call_groq(prompt, system_instruction)
-                return {"text": res, "provider": "groq", "model": self.groq_model}
+                res = await self._call_groq(prompt, system_instruction, model_override=target_model)
+                return {"text": res, "provider": "groq", "model": target_model}
             except Exception as e:
                 logger.error(f"Groq generation failed, attempting Gemini fallback: {e}")
                 if self.gemini_key:
@@ -173,11 +200,13 @@ class LLMService:
         full_res = await self.generate_response(prompt, system_instruction, provider)
         yield full_res["text"]
 
-    async def _call_groq(self, prompt: str, system_instruction: Optional[str] = None) -> str:
+    async def _call_groq(self, prompt: str, system_instruction: Optional[str] = None, model_override: Optional[str] = None) -> str:
         messages = []
         if system_instruction:
             messages.append({"role": "system", "content": system_instruction})
         messages.append({"role": "user", "content": prompt})
+
+        active_model = model_override or self.groq_model
 
         groq_client = self.get_groq_client()
         if groq_client:
@@ -185,7 +214,7 @@ class LLMService:
             response = await loop.run_in_executor(
                 None,
                 lambda: groq_client.chat.completions.create(
-                    model=self.groq_model,
+                    model=active_model,
                     messages=messages,
                     temperature=0.7,
                     max_tokens=2048,
@@ -199,7 +228,7 @@ class LLMService:
                 "Content-Type": "application/json"
             }
             payload = {
-                "model": self.groq_model,
+                "model": active_model,
                 "messages": messages,
                 "temperature": 0.7
             }
