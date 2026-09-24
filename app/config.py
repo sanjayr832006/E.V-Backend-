@@ -39,7 +39,7 @@ class Settings:
         
     @property
     def GROQ_MODEL(self) -> str:
-        return os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+        return os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
     @property
     def OLLAMA_BASE_URL(self) -> str:

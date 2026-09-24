@@ -58,13 +58,13 @@ class LLMService:
 
         if is_heavy:
             if self.groq_key:
-                return ("groq", "llama-3.3-70b-versatile")
+                return ("groq", "openai/gpt-oss-120b")
             elif self.gemini_key:
                 return ("gemini", self.gemini_model)
 
-        # Default fast chat dispatch (Ultra-fast Llama 8B)
+        # Default fast chat dispatch (Ultra-fast 20B model)
         if self.groq_key:
-            return ("groq", "llama-3.1-8b-instant")
+            return ("groq", "openai/gpt-oss-20b")
         elif self.gemini_key:
             return ("gemini", self.gemini_model)
 
@@ -99,11 +99,11 @@ class LLMService:
                 res = await self._call_groq(prompt, system_instruction, model_override=target_model)
                 return {"text": res, "provider": "groq", "model": target_model}
             except Exception as e:
-                logger.error(f"Groq generation failed, attempting Gemini fallback: {e}")
+                logger.warning(f"Groq note ({e}), falling back to Gemini...")
                 if self.gemini_key:
                     try:
                         res = await self._call_gemini(prompt, system_instruction)
-                        return {"text": res, "provider": "gemini (fallback)", "model": self.gemini_model}
+                        return {"text": res, "provider": "gemini", "model": self.gemini_model}
                     except Exception as ex:
                         logger.error(f"Gemini fallback also failed: {ex}")
                 raise e
@@ -112,11 +112,11 @@ class LLMService:
                 res = await self._call_gemini(prompt, system_instruction)
                 return {"text": res, "provider": "gemini", "model": self.gemini_model}
             except Exception as e:
-                logger.error(f"Gemini generation failed, attempting Groq fallback: {e}")
+                logger.warning(f"Gemini note ({e}), falling back to Groq...")
                 if self.groq_key:
                     try:
                         res = await self._call_groq(prompt, system_instruction)
-                        return {"text": res, "provider": "groq (fallback)", "model": self.groq_model}
+                        return {"text": res, "provider": "groq", "model": self.groq_model}
                     except Exception as ex:
                         logger.error(f"Groq fallback also failed: {ex}")
                 raise e
