@@ -1,4 +1,6 @@
 import logging
+import asyncio
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
@@ -12,6 +14,18 @@ logging.basicConfig(
 logger = logging.getLogger("ev_backend")
 
 from app.database import init_db
+
+async def keep_alive_loop():
+    """Background task that periodically self-pings the server to prevent Render free instance sleeping."""
+    await asyncio.sleep(60) # Wait 1 minute before first ping
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.get("https://e-v-backend.onrender.com/health")
+                logger.info("⚡ Keep-alive self-ping sent successfully!")
+        except Exception as e:
+            logger.debug(f"Keep-alive self-ping note: {e}")
+        await asyncio.sleep(600) # Ping every 10 minutes
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -38,6 +52,7 @@ def create_app() -> FastAPI:
         logger.info(f"Gemini API Configured: {bool(settings.GEMINI_API_KEY)}")
         logger.info(f"Groq API Configured: {bool(settings.GROQ_API_KEY)}")
         await init_db()
+        asyncio.create_task(keep_alive_loop())
 
     return app
 

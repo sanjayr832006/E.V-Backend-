@@ -35,11 +35,11 @@ class Settings:
         
     @property
     def GEMINI_MODEL(self) -> str:
-        return os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        return os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
         
     @property
     def GROQ_MODEL(self) -> str:
-        return os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+        return os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
     @property
     def OLLAMA_BASE_URL(self) -> str:

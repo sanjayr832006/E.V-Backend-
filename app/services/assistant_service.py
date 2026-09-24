@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from typing import Dict, Any, AsyncGenerator, List, Optional
@@ -14,10 +15,8 @@ class AssistantService:
     """
 
     SEARCH_KEYWORDS = [
-        "search", "find", "latest", "news", "weather", "today", "current",
-        "who is", "who was", "what is", "what was", "what is the price", "stock",
-        "score", "where is", "where was", "live", "recent", "update", "happened",
-        "wikipedia", "tell me about", "history of", "definition of", "meaning of"
+        "search", "find", "latest news", "weather", "today's", "current price",
+        "stock price", "live score", "recent news", "what happened today", "wikipedia search"
     ]
 
     def should_search_web(self, query: str) -> bool:
@@ -47,17 +46,21 @@ class AssistantService:
             logger.info(f"Target URL(s) detected in query: {urls_in_message}")
             for target_url in urls_in_message[:2]:
                 page_res = await SearchService.fetch_url_content(target_url)
-                search_results.append(page_res)
+                if page_res:
+                    search_results.append(page_res)
 
         if perform_search and not urls_in_message:
-            logger.info(f"Executing web & Wikipedia search for query: '{message}'")
-            # Fetch Wikipedia summary
-            wiki_res = await SearchService.search_wikipedia(message)
-            if wiki_res:
+            logger.info(f"Executing parallel web & Wikipedia search for query: '{message}'")
+            # Run Wikipedia and Web Search concurrently in parallel!
+            wiki_task = SearchService.search_wikipedia(message)
+            web_task = SearchService.search_web(message, max_results=3)
+
+            wiki_res, web_res = await asyncio.gather(wiki_task, web_task, return_exceptions=True)
+
+            if isinstance(wiki_res, dict) and wiki_res:
                 search_results.append(wiki_res)
-            # Fetch web search results
-            web_res = await SearchService.search_web(message, max_results=3)
-            search_results.extend(web_res)
+            if isinstance(web_res, list) and web_res:
+                search_results.extend(web_res)
 
         if search_results:
             search_context = SearchService.format_search_context(search_results)
