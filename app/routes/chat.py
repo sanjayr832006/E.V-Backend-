@@ -113,29 +113,35 @@ async def transcribe_audio_endpoint(file: UploadFile = File(...)):
 async def chat_endpoint(request: ChatMessageRequest, db: AsyncSession = Depends(get_db)):
     """
     Main REST endpoint for Android app to talk with E.V assistant.
-    Auto-persists message history into PostgreSQL database.
+    Auto-persists message history into database.
     """
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
     try:
-        # Get or create session in DB if session_id passed
-        session_obj = await DatabaseService.get_or_create_session(
-            db=db,
-            session_id=request.session_id,
-            user_id=request.user_id or "default_user",
-            title=request.message[:30]
-        )
-        active_session_id = session_obj.id
-
-        # If chat_history not provided in request, fetch previous history from DB!
+        active_session_id = request.session_id or "default_session"
         history_list = None
-        if request.chat_history:
-            history_list = [turn.model_dump() for turn in request.chat_history]
-        elif active_session_id:
-            db_msgs = await DatabaseService.get_session_messages(db, active_session_id)
-            history_list = [{"role": m["role"], "content": m["content"]} for m in db_msgs]
 
+        # Safely fetch session history from DB if available
+        try:
+            session_obj = await DatabaseService.get_or_create_session(
+                db=db,
+                session_id=request.session_id,
+                user_id=request.user_id or "default_user",
+                title=request.message[:30]
+            )
+            if session_obj:
+                active_session_id = session_obj.id
+
+            if request.chat_history:
+                history_list = [turn.model_dump() for turn in request.chat_history]
+            elif active_session_id:
+                db_msgs = await DatabaseService.get_session_messages(db, active_session_id)
+                history_list = [{"role": m["role"], "content": m["content"]} for m in db_msgs]
+        except Exception as db_err:
+            logger.warning(f"DB session lookup note (continuing chat without history): {db_err}")
+
+        # Process user query via AI Assistant Service
         result = await assistant_service.process_user_query(
             message=request.message,
             provider=request.provider or "auto",
@@ -143,23 +149,26 @@ async def chat_endpoint(request: ChatMessageRequest, db: AsyncSession = Depends(
             chat_history=history_list
         )
 
-        # Auto-persist user prompt & assistant response to PostgreSQL
-        await DatabaseService.save_chat_message(
-            db=db,
-            session_id=active_session_id,
-            role="user",
-            content=request.message
-        )
-        await DatabaseService.save_chat_message(
-            db=db,
-            session_id=active_session_id,
-            role="assistant",
-            content=result["response"],
-            provider=result["provider"],
-            model=result["model"],
-            searched_web=result["searched_web"],
-            search_sources=result["search_sources"]
-        )
+        # Safely persist chat messages to DB
+        try:
+            await DatabaseService.save_chat_message(
+                db=db,
+                session_id=active_session_id,
+                role="user",
+                content=request.message
+            )
+            await DatabaseService.save_chat_message(
+                db=db,
+                session_id=active_session_id,
+                role="assistant",
+                content=result["response"],
+                provider=result["provider"],
+                model=result["model"],
+                searched_web=result["searched_web"],
+                search_sources=result["search_sources"]
+            )
+        except Exception as db_save_err:
+            logger.warning(f"DB save message note: {db_save_err}")
 
         result["session_id"] = active_session_id
         return result

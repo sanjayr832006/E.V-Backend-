@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
@@ -11,27 +12,35 @@ Base = declarative_base()
 # Engine & Sessionmaker placeholders
 engine = None
 AsyncSessionLocal = None
-ACTIVE_DB_TYPE = "postgresql"
+ACTIVE_DB_TYPE = "sqlite"
 
 async def init_db():
     """
-    Initializes the database engine (PostgreSQL by default, with SQLite dynamic fallback).
+    Initializes the database engine (SQLite by default on cloud, PostgreSQL if configured).
     Creates all defined database tables.
     """
     global engine, AsyncSessionLocal, ACTIVE_DB_TYPE
     
     db_url = settings.DATABASE_URL
+    # Default to fast SQLite on cloud if default localhost PostgreSQL URL is present
+    if ("localhost" in db_url or "127.0.0.1" in db_url) and (os.getenv("RENDER") or os.getenv("PORT")):
+        db_url = "sqlite+aiosqlite:///./ev_assistant.db"
+
     try:
-        logger.info(f"Connecting to PostgreSQL database: {db_url.split('@')[-1] if '@' in db_url else db_url}")
-        engine = create_async_engine(db_url, echo=False, pool_pre_ping=True)
+        if db_url.startswith("sqlite"):
+            engine = create_async_engine(db_url, echo=False)
+            ACTIVE_DB_TYPE = "sqlite"
+        else:
+            engine = create_async_engine(db_url, echo=False, pool_pre_ping=True)
+            ACTIVE_DB_TYPE = "postgresql"
+
         AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
         
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("✅ PostgreSQL Database connected and tables initialized successfully!")
-        ACTIVE_DB_TYPE = "postgresql"
+        logger.info(f"✅ Database initialized successfully using {ACTIVE_DB_TYPE}!")
     except Exception as e:
-        logger.warning(f"PostgreSQL connection failed ({e}). Falling back to local SQLite database...")
+        logger.warning(f"Primary DB connection failed ({e}). Falling back to local SQLite database...")
         fallback_url = "sqlite+aiosqlite:///./ev_assistant.db"
         engine = create_async_engine(fallback_url, echo=False)
         AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
