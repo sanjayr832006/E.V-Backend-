@@ -51,21 +51,25 @@ async def init_db():
         logger.info("✅ SQLite Fallback Database initialized successfully!")
         ACTIVE_DB_TYPE = "sqlite"
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[Optional[AsyncSession], None]:
     """
-    Dependency generator for FastAPI routes to obtain a database session.
+    Dependency generator for FastAPI routes to obtain a database session safely.
     """
-    if AsyncSessionLocal is None:
-        try:
+    session = None
+    try:
+        if AsyncSessionLocal is None:
             await init_db()
-        except Exception as e:
-            logger.error(f"init_db error in get_db: {e}")
+        if AsyncSessionLocal is not None:
+            session = AsyncSessionLocal()
+    except Exception as e:
+        logger.warning(f"Database session creation note: {e}")
+        session = None
 
-    if AsyncSessionLocal is not None:
-        async with AsyncSessionLocal() as session:
+    try:
+        yield session
+    finally:
+        if session is not None:
             try:
-                yield session
-            finally:
                 await session.close()
-    else:
-        yield None
+            except Exception:
+                pass

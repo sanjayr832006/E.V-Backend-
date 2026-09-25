@@ -14,11 +14,14 @@ class DatabaseService:
 
     @staticmethod
     async def get_or_create_session(
-        db: AsyncSession,
+        db: Optional[AsyncSession],
         session_id: Optional[str] = None,
         user_id: str = "default_user",
         title: Optional[str] = None
-    ) -> ChatSession:
+    ) -> Optional[ChatSession]:
+        if not db:
+            return None
+
         if session_id:
             stmt = select(ChatSession).where(ChatSession.id == session_id)
             res = await db.execute(stmt)
@@ -38,7 +41,9 @@ class DatabaseService:
         return new_session
 
     @staticmethod
-    async def list_sessions(db: AsyncSession, user_id: str = "default_user") -> List[Dict[str, Any]]:
+    async def list_sessions(db: Optional[AsyncSession], user_id: str = "default_user") -> List[Dict[str, Any]]:
+        if not db:
+            return []
         stmt = select(ChatSession).where(ChatSession.user_id == user_id).order_by(ChatSession.updated_at.desc())
         res = await db.execute(stmt)
         sessions = res.scalars().all()
@@ -54,7 +59,9 @@ class DatabaseService:
         ]
 
     @staticmethod
-    async def delete_session(db: AsyncSession, session_id: str) -> bool:
+    async def delete_session(db: Optional[AsyncSession], session_id: str) -> bool:
+        if not db:
+            return False
         stmt = delete(ChatSession).where(ChatSession.id == session_id)
         res = await db.execute(stmt)
         await db.commit()
@@ -62,7 +69,7 @@ class DatabaseService:
 
     @staticmethod
     async def save_chat_message(
-        db: AsyncSession,
+        db: Optional[AsyncSession],
         session_id: str,
         role: str,
         content: str,
@@ -70,7 +77,9 @@ class DatabaseService:
         model: Optional[str] = None,
         searched_web: bool = False,
         search_sources: Optional[List[Dict[str, str]]] = None
-    ) -> ChatMessage:
+    ) -> Optional[ChatMessage]:
+        if not db:
+            return None
         message = ChatMessage(
             session_id=session_id,
             role=role,
@@ -86,7 +95,9 @@ class DatabaseService:
         return message
 
     @staticmethod
-    async def get_session_messages(db: AsyncSession, session_id: str) -> List[Dict[str, Any]]:
+    async def get_session_messages(db: Optional[AsyncSession], session_id: str) -> List[Dict[str, Any]]:
+        if not db:
+            return []
         stmt = select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.asc())
         res = await db.execute(stmt)
         messages = res.scalars().all()
@@ -106,13 +117,14 @@ class DatabaseService:
 
     @staticmethod
     async def save_user_memory(
-        db: AsyncSession,
+        db: Optional[AsyncSession],
         user_id: str,
         key: str,
         value: str,
         category: str = "general"
-    ) -> UserMemory:
-        # Check existing memory with key
+    ) -> Optional[UserMemory]:
+        if not db:
+            return None
         stmt = select(UserMemory).where(UserMemory.user_id == user_id, UserMemory.key == key)
         res = await db.execute(stmt)
         existing = res.scalar_one_or_none()
@@ -130,7 +142,9 @@ class DatabaseService:
         return memory
 
     @staticmethod
-    async def get_user_memories(db: AsyncSession, user_id: str) -> List[Dict[str, Any]]:
+    async def get_user_memories(db: Optional[AsyncSession], user_id: str) -> List[Dict[str, Any]]:
+        if not db:
+            return []
         stmt = select(UserMemory).where(UserMemory.user_id == user_id).order_by(UserMemory.created_at.desc())
         res = await db.execute(stmt)
         memories = res.scalars().all()
