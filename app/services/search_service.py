@@ -19,23 +19,6 @@ class SearchService:
         Returns a list of dicts with 'title', 'href', and 'body'.
         """
         results = []
-        # Attempt 1: DuckDuckGo Search package
-        try:
-            from duckduckgo_search import DDGS
-            with DDGS() as ddgs:
-                ddg_gen = ddgs.text(query, max_results=max_results)
-                for item in ddg_gen:
-                    results.append({
-                        "title": item.get("title", ""),
-                        "href": item.get("href", ""),
-                        "body": item.get("body", "")
-                    })
-            if results:
-                return results
-        except Exception as e:
-            logger.warning(f"DuckDuckGo search package fallback triggered: {e}")
-
-        # Attempt 2: Direct HTTP Search fallback
         try:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
