@@ -207,61 +207,28 @@ class LLMService:
         messages.append({"role": "user", "content": prompt})
 
         active_model = model_override or self.groq_model
-
-        groq_client = self.get_groq_client()
-        if groq_client:
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: groq_client.chat.completions.create(
-                    model=active_model,
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=2048,
-                )
-            )
-            return response.choices[0].message.content
-        else:
-            # REST Fallback
-            headers = {
-                "Authorization": f"Bearer {self.groq_key}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": active_model,
-                "messages": messages,
-                "temperature": 0.7
-            }
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-                return data["choices"][0]["message"]["content"]
+        headers = {
+            "Authorization": f"Bearer {self.groq_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": active_model,
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 2048
+        }
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            resp = await client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
 
     async def _stream_groq(self, prompt: str, system_instruction: Optional[str] = None) -> AsyncGenerator[str, None]:
-        messages = []
-        if system_instruction:
-            messages.append({"role": "system", "content": system_instruction})
-        messages.append({"role": "user", "content": prompt})
-
-        groq_client = self.get_groq_client()
-        if groq_client:
-            loop = asyncio.get_running_loop()
-            stream = await loop.run_in_executor(
-                None,
-                lambda: groq_client.chat.completions.create(
-                    model=self.groq_model,
-                    messages=messages,
-                    temperature=0.7,
-                    stream=True
-                )
-            )
-            for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
-        else:
-            res = await self._call_groq(prompt, system_instruction)
-            yield res
+        res = await self._call_groq(prompt, system_instruction)
+        words = res.split(" ")
+        for i in range(0, len(words), 3):
+            yield " ".join(words[i:i+3]) + " "
+            await asyncio.sleep(0.01)
 
     async def _call_gemini(self, prompt: str, system_instruction: Optional[str] = None) -> str:
         # Direct HTTP API call for Gemini to ensure 100% reliability regardless of SDK version installed
