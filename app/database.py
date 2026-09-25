@@ -22,9 +22,7 @@ async def init_db():
     global engine, AsyncSessionLocal, ACTIVE_DB_TYPE
     
     try:
-        db_file = "/tmp/ev_assistant.db" if (os.getenv("RENDER") or os.getenv("PORT")) else "ev_assistant.db"
-        clean_file = db_file.lstrip('/')
-        engine = create_async_engine(f"sqlite+aiosqlite:///{clean_file}", echo=False)
+        engine = create_async_engine("sqlite+aiosqlite:///./ev_assistant.db", echo=False)
         AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
         
         async with engine.begin() as conn:
