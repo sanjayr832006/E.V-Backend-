@@ -119,34 +119,6 @@ class LLMService:
                 "provider": "E.V Assistant",
                 "model": "v1.0"
             }
-        else:
-            if self.groq_key:
-                try:
-                    res = await self._call_groq(prompt, system_instruction)
-                    return {"text": res, "provider": "groq", "model": self.groq_model}
-                except Exception:
-                    pass
-            if self.gemini_key:
-                try:
-                    res = await self._call_gemini(prompt, system_instruction)
-                    return {"text": res, "provider": "gemini", "model": self.gemini_model}
-                except Exception:
-                    pass
-            # Try local Ollama if available
-            try:
-                res = await self._call_ollama(prompt, system_instruction)
-                return {"text": res, "provider": "ollama", "model": self.ollama_model}
-            except Exception:
-                pass
-
-            return {
-                "text": (
-                    "Hello! I am E.V, your personal AI assistant. "
-                    "Please configure your GEMINI_API_KEY, GROQ_API_KEY, or run local Ollama to enable AI intelligence!"
-                ),
-                "provider": "none",
-                "model": "offline"
-            }
 
     async def generate_stream(
         self,
