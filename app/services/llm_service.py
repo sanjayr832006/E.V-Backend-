@@ -178,6 +178,9 @@ class LLMService:
         messages.append({"role": "user", "content": prompt})
 
         active_model = model_override or self.groq_model
+        if not active_model or "llama" in active_model.lower():
+            active_model = "openai/gpt-oss-20b"
+
         headers = {
             "Authorization": f"Bearer {self.groq_key}",
             "Content-Type": "application/json"
