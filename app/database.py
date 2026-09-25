@@ -22,9 +22,10 @@ async def init_db():
     global engine, AsyncSessionLocal, ACTIVE_DB_TYPE
     
     db_url = settings.DATABASE_URL
-    # Default to fast SQLite if default localhost PostgreSQL URL is present
+    db_file_path = "/tmp/ev_assistant.db" if (os.getenv("RENDER") or os.getenv("PORT")) else "./ev_assistant.db"
+
     if "localhost" in db_url or "127.0.0.1" in db_url:
-        db_url = "sqlite+aiosqlite:///./ev_assistant.db"
+        db_url = f"sqlite+aiosqlite:///{db_file_path}"
 
     try:
         if db_url.startswith("sqlite"):
@@ -41,7 +42,7 @@ async def init_db():
         logger.info(f"✅ Database initialized successfully using {ACTIVE_DB_TYPE}!")
     except Exception as e:
         logger.warning(f"Primary DB connection failed ({e}). Falling back to local SQLite database...")
-        fallback_url = "sqlite+aiosqlite:///./ev_assistant.db"
+        fallback_url = f"sqlite+aiosqlite:///{db_file_path}"
         engine = create_async_engine(fallback_url, echo=False)
         AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
         
@@ -55,9 +56,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     Dependency generator for FastAPI routes to obtain a database session.
     """
     if AsyncSessionLocal is None:
-        await init_db()
-    async with AsyncSessionLocal() as session:
         try:
-            yield session
-        finally:
-            await session.close()
+            await init_db()
+        except Exception as e:
+            logger.error(f"init_db error in get_db: {e}")
+
+    if AsyncSessionLocal is not None:
+        async with AsyncSessionLocal() as session:
+            try:
+                yield session
+            finally:
+                await session.close()
+    else:
+        yield None
