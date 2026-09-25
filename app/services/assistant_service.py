@@ -94,7 +94,9 @@ class AssistantService:
             "model": response_data["model"],
             "searched_web": bool(search_results),
             "search_sources": [
-                {"title": r.get("title"), "url": r.get("href")} for r in search_results
+                {"title": r.get("title", ""), "url": r.get("href", "")}
+                for r in search_results
+                if r and isinstance(r, dict)
             ]
         }
 

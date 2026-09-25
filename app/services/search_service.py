@@ -77,6 +77,8 @@ class SearchService:
                     return {"title": str(title), "href": url, "body": text[:4000]}
         except Exception as e:
             logger.error(f"Failed to fetch content from URL {url}: {e}")
+            return {"title": url, "href": url, "body": ""}
+
     @staticmethod
     async def search_wikipedia(query: str) -> Optional[Dict[str, str]]:
         """
@@ -120,9 +122,11 @@ class SearchService:
 
         context_str = "=== REAL-TIME INTERNET SEARCH RESULTS ===\n"
         for i, res in enumerate(search_results, 1):
-            context_str += f"Source [{i}]: {res.get('title')}\n"
+            if not res or not isinstance(res, dict):
+                continue
+            context_str += f"Source [{i}]: {res.get('title', '')}\n"
             if res.get('href'):
                 context_str += f"URL: {res.get('href')}\n"
-            context_str += f"Content: {res.get('body')}\n\n"
+            context_str += f"Content: {res.get('body', '')}\n\n"
         context_str += "=== END SEARCH RESULTS ===\n"
         return context_str
