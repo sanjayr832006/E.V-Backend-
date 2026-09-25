@@ -45,7 +45,11 @@ class Settings:
         
     @property
     def GROQ_MODEL(self) -> str:
-        return os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+        load_dotenv(override=True)
+        val = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+        if not val or "llama" in val:
+            val = "openai/gpt-oss-20b"
+        return val
 
     @property
     def OLLAMA_BASE_URL(self) -> str:
