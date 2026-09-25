@@ -22,8 +22,8 @@ async def init_db():
     global engine, AsyncSessionLocal, ACTIVE_DB_TYPE
     
     db_url = settings.DATABASE_URL
-    # Default to fast SQLite on cloud if default localhost PostgreSQL URL is present
-    if ("localhost" in db_url or "127.0.0.1" in db_url) and (os.getenv("RENDER") or os.getenv("PORT")):
+    # Default to fast SQLite if default localhost PostgreSQL URL is present
+    if "localhost" in db_url or "127.0.0.1" in db_url:
         db_url = "sqlite+aiosqlite:///./ev_assistant.db"
 
     try:
