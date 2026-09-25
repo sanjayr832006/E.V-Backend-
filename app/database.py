@@ -16,60 +16,41 @@ ACTIVE_DB_TYPE = "sqlite"
 
 async def init_db():
     """
-    Initializes the database engine (SQLite by default on cloud, PostgreSQL if configured).
+    Initializes the database engine safely.
     Creates all defined database tables.
     """
     global engine, AsyncSessionLocal, ACTIVE_DB_TYPE
     
-    db_url = settings.DATABASE_URL
-    db_file_path = "/tmp/ev_assistant.db" if (os.getenv("RENDER") or os.getenv("PORT")) else "./ev_assistant.db"
-
-    if "localhost" in db_url or "127.0.0.1" in db_url:
-        db_url = f"sqlite+aiosqlite:///{db_file_path}"
-
     try:
-        if db_url.startswith("sqlite"):
-            engine = create_async_engine(db_url, echo=False)
-            ACTIVE_DB_TYPE = "sqlite"
-        else:
-            engine = create_async_engine(db_url, echo=False, pool_pre_ping=True)
-            ACTIVE_DB_TYPE = "postgresql"
-
+        db_file = "/tmp/ev_assistant.db" if (os.getenv("RENDER") or os.getenv("PORT")) else "ev_assistant.db"
+        clean_file = db_file.lstrip('/')
+        engine = create_async_engine(f"sqlite+aiosqlite:///{clean_file}", echo=False)
         AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
         
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        logger.info(f"✅ Database initialized successfully using {ACTIVE_DB_TYPE}!")
-    except Exception as e:
-        logger.warning(f"Primary DB connection failed ({e}). Falling back to local SQLite database...")
-        fallback_url = f"sqlite+aiosqlite:///{db_file_path}"
-        engine = create_async_engine(fallback_url, echo=False)
-        AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
-        
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("✅ SQLite Fallback Database initialized successfully!")
         ACTIVE_DB_TYPE = "sqlite"
+        logger.info("✅ Database initialized successfully!")
+    except Exception as e:
+        logger.warning(f"Database init note: {e}")
+        ACTIVE_DB_TYPE = "none"
 
 async def get_db() -> AsyncGenerator[Optional[AsyncSession], None]:
     """
     Dependency generator for FastAPI routes to obtain a database session safely.
     """
     session = None
-    try:
-        if AsyncSessionLocal is None:
-            await init_db()
-        if AsyncSessionLocal is not None:
+    if AsyncSessionLocal is not None:
+        try:
             session = AsyncSessionLocal()
-    except Exception as e:
-        logger.warning(f"Database session creation note: {e}")
-        session = None
+        except Exception as e:
+            logger.warning(f"Session creation note: {e}")
+            session = None
 
-    try:
-        yield session
-    finally:
-        if session is not None:
-            try:
-                await session.close()
-            except Exception:
-                pass
+    yield session
+
+    if session is not None:
+        try:
+            await session.close()
+        except Exception:
+            pass
