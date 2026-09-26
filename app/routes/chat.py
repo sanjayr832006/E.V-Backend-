@@ -29,6 +29,7 @@ class ChatMessageRequest(BaseModel):
     session_id: Optional[str] = Field(None, description="Optional session ID for PostgreSQL chat history tracking")
     user_id: Optional[str] = Field("default_user", description="Optional user ID for personalized memories & history")
     chat_history: Optional[List[ChatTurn]] = Field(None, description="Previous conversation messages for context")
+    image_base64: Optional[str] = Field(None, description="Optional base64 image string for vision capabilities")
 
 class SearchSource(BaseModel):
     title: Optional[str] = None
@@ -146,7 +147,8 @@ async def chat_endpoint(request: ChatMessageRequest, db: AsyncSession = Depends(
             message=request.message,
             provider=request.provider or "auto",
             enable_search=request.enable_search,
-            chat_history=history_list
+            chat_history=history_list,
+            image_base64=request.image_base64
         )
 
         # Safely persist chat messages to DB

@@ -31,7 +31,8 @@ class AssistantService:
         message: str,
         provider: str = "auto",
         enable_search: Optional[bool] = None,
-        chat_history: Optional[List[Dict[str, str]]] = None
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        image_base64: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Processes a user query and returns a structured response.
@@ -40,9 +41,13 @@ class AssistantService:
         search_results = []
         search_context = ""
 
+        # Skip web search if doing image vision task to optimize speed
+        if image_base64:
+            perform_search = False
+
         # Check for explicit URLs in the user's message
         urls_in_message = re.findall(r'https?://[^\s]+', message)
-        if urls_in_message:
+        if urls_in_message and not image_base64:
             logger.info(f"Target URL(s) detected in query: {urls_in_message}")
             for target_url in urls_in_message[:2]:
                 page_res = await SearchService.fetch_url_content(target_url)
@@ -71,7 +76,7 @@ class AssistantService:
             full_prompt = f"{search_context}\n\nUser Question: {message}\n\nPlease answer the user using the live search context above when relevant."
 
         # Include chat history if provided
-        if chat_history:
+        if chat_history and not image_base64:
             history_str = "=== PREVIOUS CONVERSATION HISTORY ===\n"
             for turn in chat_history[-6:]:  # Last 3 rounds
                 role = turn.get("role", "user")
@@ -84,7 +89,8 @@ class AssistantService:
         response_data = await llm_service.generate_response(
             prompt=full_prompt,
             system_instruction=settings.SYSTEM_PROMPT,
-            provider=provider
+            provider=provider,
+            image_base64=image_base64
         )
 
         return {

@@ -74,7 +74,8 @@ class LLMService:
         self,
         prompt: str,
         system_instruction: Optional[str] = None,
-        provider: str = "auto"
+        provider: str = "auto",
+        image_base64: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generates complete text response with provider routing and fallback.
@@ -83,10 +84,13 @@ class LLMService:
             chosen_provider = provider.lower()
             target_model = self.groq_model
 
+            if image_base64:
+                chosen_provider = "gemini" # Force Gemini for multimodal vision capabilities
+
             if chosen_provider == "auto":
                 chosen_provider, target_model = self.dispatch_model(prompt)
 
-            if chosen_provider == "groq" and self.groq_key:
+            if chosen_provider == "groq" and self.groq_key and not image_base64:
                 try:
                     res = await self._call_groq(prompt, system_instruction, model_override=target_model)
                     return {"text": res, "provider": "groq", "model": target_model}
@@ -95,12 +99,12 @@ class LLMService:
 
             if self.gemini_key:
                 try:
-                    res = await self._call_gemini(prompt, system_instruction)
+                    res = await self._call_gemini(prompt, system_instruction, image_base64=image_base64)
                     return {"text": res, "provider": "gemini", "model": self.gemini_model}
                 except Exception as e:
                     logger.warning(f"Gemini fallback note: {e}")
 
-            if self.groq_key:
+            if self.groq_key and not image_base64:
                 try:
                     res = await self._call_groq(prompt, system_instruction, model_override="openai/gpt-oss-20b")
                     return {"text": res, "provider": "groq", "model": "openai/gpt-oss-20b"}
@@ -204,19 +208,27 @@ class LLMService:
             yield " ".join(words[i:i+3]) + " "
             await asyncio.sleep(0.01)
 
-    async def _call_gemini(self, prompt: str, system_instruction: Optional[str] = None) -> str:
+    async def _call_gemini(self, prompt: str, system_instruction: Optional[str] = None, image_base64: Optional[str] = None) -> str:
         # Direct HTTP API call for Gemini to ensure 100% reliability regardless of SDK version installed
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.gemini_model}:generateContent?key={self.gemini_key}"
         
-        contents = [{"parts": [{"text": prompt}]}]
-        payload: Dict[str, Any] = {"contents": contents}
+        parts = [{"text": prompt}]
+        if image_base64:
+            parts.append({
+                "inlineData": {
+                    "mimeType": "image/jpeg",
+                    "data": image_base64
+                }
+            })
+
+        payload: Dict[str, Any] = {"contents": [{"parts": parts}]}
         if system_instruction:
             payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
             
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(url, json=payload)
             if resp.status_code != 200:
-                # Fallback to gemini-1.5-flash if 2.5-flash endpoint is restricted
+                # Fallback to gemini-1.5-flash if endpoint is restricted
                 fallback_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_key}"
                 resp = await client.post(fallback_url, json=payload)
             
@@ -230,7 +242,6 @@ class LLMService:
             return ""
 
     async def _stream_gemini(self, prompt: str, system_instruction: Optional[str] = None) -> AsyncGenerator[str, None]:
-        # For simplicity and reliability, fetch full response and yield in responsive chunks
         text = await self._call_gemini(prompt, system_instruction)
         words = text.split(" ")
         chunk_size = 4
@@ -291,4 +302,3 @@ class LLMService:
                             continue
 
 llm_service = LLMService()
-
